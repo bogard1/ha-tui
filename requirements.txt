@@ -1,0 +1,5 @@
+aiohttp
+websockets
+textual
+pyyaml
+python-dotenv

@@ -144,6 +144,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Home Assistant TUI Configuration files (may contain sensitive data)
+dashboard.yml
+dashboard-temps.yml
+
 # Spyder project settings
 .spyderproject
 .spyproject

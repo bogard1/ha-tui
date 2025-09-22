@@ -1,0 +1,56 @@
+# dashboard.yml
+ha:
+  url: "http://homeassistant.local:8123"
+  token: "${HA_TOKEN}"       # lee de env (recomendado)
+  verify_ssl: false
+
+ui:
+  refresh_ms: 250            # frecuencia de repintado
+  theme: "auto"              # auto/light/dark
+
+pages:
+  - id: "living"
+    title: "Living"
+    layout: "grid-2"         # grid-1 | grid-2 | grid-3 | rows
+    widgets:
+      - type: "value"
+        entity: "sensor.living_temperature"
+        label: "Temp Living"
+        unit: "°C"
+        fmt: ".1f"
+      - type: "value"
+        entity: "sensor.living_humidity"
+        label: "Humedad"
+        unit: "%"
+        fmt: ".0f"
+      - type: "binary"
+        entity: "binary_sensor.puerta_principal"
+        label: "Puerta"
+        on_text: "ABIERTA"
+        off_text: "cerrada"
+      - type: "sparkline"
+        entity: "sensor.power_total"
+        label: "Consumo"
+        window: 60           # últimos 60 samples
+  - id: "seguridad"
+    title: "Seguridad"
+    layout: "rows"
+    widgets:
+      - type: "binary"
+        entity: "binary_sensor.movimiento_patio"
+        label: "Movimiento patio"
+      - type: "action"
+        label: "Armar alarma (away)"
+        service: "alarm_control_panel/alarm_arm_away"
+        data:
+          entity_id: "alarm_control_panel.casa"
+      - type: "action"
+        label: "Desarmar alarma"
+        service: "alarm_control_panel/alarm_disarm"
+        data:
+          entity_id: "alarm_control_panel.casa"
+keybinds:
+  next_page: "tab"
+  prev_page: "shift+tab"
+  reload_config: "r"
+  quit: "q"
