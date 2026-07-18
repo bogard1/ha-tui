@@ -1,54 +1,130 @@
-# dashboard.yml
 ha:
   url: "http://homeassistant.local:8123"
-  token: "${HA_TOKEN}"       # lee de env (recomendado)
+  token: "${HA_TOKEN}"       # lee de .env (recomendado)
   verify_ssl: false
 
 ui:
-  refresh_ms: 250            # frecuencia de repintado
-  theme: "auto"              # auto/light/dark
+  refresh_ms: 250            # frecuencia de repintado en ms
+  theme: "auto"              # auto | light | dark
 
 pages:
-  - id: "living"
-    title: "Living"
-    layout: "grid-2"         # grid-1 | grid-2 | grid-3 | rows
-    widgets:
-      - type: "value"
-        entity: "sensor.living_temperature"
-        label: "Temp Living"
-        unit: "°C"
-        fmt: ".1f"
-      - type: "value"
-        entity: "sensor.living_humidity"
-        label: "Humedad"
-        unit: "%"
-        fmt: ".0f"
-      - type: "binary"
-        entity: "binary_sensor.puerta_principal"
-        label: "Puerta"
-        on_text: "ABIERTA"
-        off_text: "cerrada"
-      - type: "sparkline"
-        entity: "sensor.power_total"
-        label: "Consumo"
-        window: 60           # últimos 60 samples
+  - id: "home"
+    title: "Home"
+    sections:
+      # Fila de sensores con historial
+      - layout: "grid-4"
+        widgets:
+          - type: "value_sparkline"
+            entity: "sensor.living_temperature"
+            label: "Living"
+            unit: "°C"
+            fmt: ".1f"
+            window: 60
+          - type: "value_sparkline"
+            entity: "sensor.bedroom_temperature"
+            label: "Dormitorio"
+            unit: "°C"
+            fmt: ".1f"
+            window: 60
+          - type: "value_sparkline"
+            entity: "sensor.office_temperature"
+            label: "Oficina"
+            unit: "°C"
+            fmt: ".1f"
+            window: 60
+          - type: "value_sparkline"
+            entity: "sensor.outdoor_temperature"
+            label: "Exterior"
+            unit: "°C"
+            fmt: ".1f"
+            window: 60
+
+      # Luces por habitación
+      - title: "Living"
+        layout: "grid-3"
+        widgets:
+          - type: "toggle"
+            entity: "light.living_main"
+            label: "Principal"
+          - type: "toggle"
+            entity: "light.living_strip"
+            label: "Tira LED"
+          - type: "toggle"
+            entity: "light.living_lamp"
+            label: "Lampara"
+
+      - title: "Dormitorio"
+        layout: "grid-2"
+        widgets:
+          - type: "toggle"
+            entity: "light.bedroom_ceiling"
+            label: "Techo"
+          - type: "toggle"
+            entity: "light.bedroom_lamp"
+            label: "Velador"
+
+      - title: "Oficina"
+        layout: "grid-2"
+        widgets:
+          - type: "toggle"
+            entity: "light.office_ceiling"
+            label: "Techo"
+          - type: "toggle"
+            entity: "light.office_desk"
+            label: "Escritorio"
+
   - id: "seguridad"
     title: "Seguridad"
-    layout: "rows"
-    widgets:
-      - type: "binary"
-        entity: "binary_sensor.movimiento_patio"
-        label: "Movimiento patio"
-      - type: "action"
-        label: "Armar alarma (away)"
-        service: "alarm_control_panel/alarm_arm_away"
-        data:
-          entity_id: "alarm_control_panel.casa"
-      - type: "action"
-        label: "Desarmar alarma"
-        service: "alarm_control_panel/alarm_disarm"
-        data:
-          entity_id: "alarm_control_panel.casa"
+    sections:
+      - layout: "grid-2"
+        widgets:
+          - type: "binary"
+            entity: "binary_sensor.front_door"
+            label: "Puerta principal"
+            on_text: "ABIERTA"
+            off_text: "cerrada"
+          - type: "binary"
+            entity: "binary_sensor.motion_living"
+            label: "Movimiento living"
+            on_text: "DETECTADO"
+            off_text: "sin movimiento"
+
+      - title: "Alarma"
+        layout: "grid-2"
+        widgets:
+          - type: "action"
+            label: "Armar (away)"
+            service: "alarm_control_panel/alarm_arm_away"
+            data:
+              entity_id: "alarm_control_panel.home"
+          - type: "action"
+            label: "Desarmar"
+            service: "alarm_control_panel/alarm_disarm"
+            data:
+              entity_id: "alarm_control_panel.home"
+
+  - id: "energia"
+    title: "Energía"
+    sections:
+      - layout: "grid-2"
+        widgets:
+          - type: "value"
+            entity: "sensor.power_consumption"
+            label: "Consumo actual"
+            unit: "W"
+            fmt: ".0f"
+          - type: "value"
+            entity: "sensor.energy_today"
+            label: "Consumo hoy"
+            unit: "kWh"
+            fmt: ".2f"
+      - layout: "grid-1"
+        widgets:
+          - type: "sparkline"
+            entity: "sensor.power_consumption"
+            label: "Historial consumo"
+            window: 120
+
 keybinds:
   next_page: "tab"
   prev_page: "shift+tab"
