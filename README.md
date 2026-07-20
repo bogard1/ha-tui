@@ -5,7 +5,7 @@ A terminal dashboard for Home Assistant built with [Textual](https://textual.tex
 ## Features
 
 - **Real-time** — WebSocket connection with automatic reconnection on drops
-- **7 widget types** — Values, binaries, sparklines, toggles, actions, and headings
+- **8 widget types** — Values, binaries, sparklines, toggles, actions, headings, and Spotify player
 - **Multi-page with sections** — Each section has its own independent layout
 - **YAML configurable** — Full dashboard defined in a single file
 - **Environment variables** — Secure token via `.env` or system environment variable
@@ -172,6 +172,18 @@ Shows current state and toggles on click.
 - type: "heading"
   text: "Office"
 ```
+
+### `spotify` — Spotify / media player control
+
+Displays current track, artist, and a progress bar. Includes ⏮ ▶/⏸ ⏭ clickable controls that call the corresponding `media_player` services in Home Assistant.
+
+```yaml
+- type: "spotify"
+  entity: "media_player.spotify_rodrigo_gonzalez"
+  label: "Spotify"
+```
+
+The play/pause button updates automatically based on the player state. Shows "No disponible" when the entity is absent or HA is unreachable.
 
 ## Layouts
 

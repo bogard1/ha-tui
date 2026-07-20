@@ -1,9 +1,10 @@
 import os, json, ssl, sys, asyncio
 import aiohttp, websockets, yaml
 from dotenv import load_dotenv
-from textual.app import App
-from textual.widgets import Static, Header, Footer
-from textual.containers import Grid, VerticalScroll
+from textual.app import App, ComposeResult
+from textual.widget import Widget
+from textual.widgets import Static, Header, Footer, Button
+from textual.containers import Grid, VerticalScroll, Horizontal
 
 load_dotenv()
 
@@ -266,6 +267,75 @@ class ActionWidget(Static):
         return f"[b]{self._label}[/b]{status}"
 
 
+class SpotifyWidget(Widget):
+    """Media player / Spotify control widget."""
+
+    def __init__(self, entity: str, label: str, ha, state_cache: dict, history: dict, **kwargs):
+        super().__init__(**kwargs)
+        self._entity = entity
+        self._label = label
+        self._ha = ha
+        self._state_cache = state_cache
+        self._history = history
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="sp-info")
+        with Horizontal(id="sp-controls"):
+            yield Button("⏮", id="sp-prev", classes="sp-btn")
+            yield Button("▶", id="sp-play", classes="sp-btn")
+            yield Button("⏭", id="sp-next", classes="sp-btn")
+
+    def on_mount(self) -> None:
+        self.set_interval(0.25, self._tick)
+
+    def _tick(self) -> None:
+        state_data = self._state_cache.get(self._entity)
+        if not isinstance(state_data, dict):
+            self.query_one("#sp-info", Static).update(f"[dim]{self._label}\nNo disponible[/dim]")
+            return
+
+        state = state_data.get("state", "unknown")
+        attrs = state_data.get("attributes", {})
+        title = attrs.get("media_title", "")
+        artist = attrs.get("media_artist", "")
+        position = attrs.get("media_position") or 0
+        duration = attrs.get("media_duration") or 0
+
+        lines = [f"[bold]{self._label}[/bold]"]
+        if state in ("playing", "paused"):
+            if title:
+                lines.append(f"[b]{title}[/b]")
+            if artist:
+                lines.append(f"[dim]{artist}[/dim]")
+        else:
+            lines.append(f"[dim]{state}[/dim]")
+
+        if duration > 0:
+            pct = min(1.0, position / duration)
+            bar_width = 26
+            filled = int(pct * bar_width)
+            lines.append(f"[dim]{'█' * filled}{'░' * (bar_width - filled)}[/dim]")
+
+        self.query_one("#sp-info", Static).update("\n".join(lines))
+        play_btn = self.query_one("#sp-play", Button)
+        play_btn.label = "⏸" if state == "playing" else "▶"
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        btn_id = event.button.id
+        try:
+            if btn_id == "sp-prev":
+                await self._ha.call_service("media_player/media_previous_track",
+                                             {"entity_id": self._entity})
+            elif btn_id == "sp-play":
+                await self._ha.call_service("media_player/media_play_pause",
+                                             {"entity_id": self._entity})
+            elif btn_id == "sp-next":
+                await self._ha.call_service("media_player/media_next_track",
+                                             {"entity_id": self._entity})
+        except Exception:
+            pass
+
+
 # -------- App --------
 class HADashboard(App):
     CSS = """
@@ -285,6 +355,10 @@ class HADashboard(App):
     HeadingWidget { column-span: 4; border: none; height: 3; background: $background; padding: 0 1; }
     .section-heading { border: none; height: 3; background: $background; padding: 0 2; }
     .error { border: round; color: $error; margin: 2 4; height: auto; }
+    SpotifyWidget { height: 9; padding: 0; border: round; }
+    SpotifyWidget #sp-info { border: none; padding: 0 1; height: 1fr; }
+    SpotifyWidget #sp-controls { height: 3; }
+    SpotifyWidget .sp-btn { width: 1fr; border: none; min-width: 3; }
     """
     BINDINGS = [
         ("right", "next_page", "→"),
@@ -369,6 +443,14 @@ class HADashboard(App):
             )
         elif t == "heading":
             return HeadingWidget(w.get("text", ""))
+        elif t == "spotify":
+            return SpotifyWidget(
+                entity=w["entity"],
+                label=w.get("label", w["entity"]),
+                ha=ha,
+                state_cache=sc,
+                history=hist,
+            )
         else:
             return Static(f"Widget '{t}' no soportado")
 
