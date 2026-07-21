@@ -1,4 +1,4 @@
-import os, json, ssl, sys, asyncio
+import os, json, ssl, sys, asyncio, datetime
 import aiohttp, websockets, yaml
 from dotenv import load_dotenv
 from textual.app import App, ComposeResult
@@ -120,6 +120,14 @@ class HAClient:
 # -------- Widgets --------
 _ON_STATES = {"on", "open", "detected", "home", "true"}
 _SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
+_WX_ICONS = {
+    "sunny": "☀", "clear-night": "🌙", "cloudy": "☁",
+    "partlycloudy": "⛅", "rainy": "🌧", "pouring": "🌧",
+    "snowy": "❄", "snowy-rainy": "🌨", "fog": "🌫",
+    "windy": "💨", "windy-variant": "💨",
+    "lightning": "⚡", "lightning-rainy": "⛈",
+    "hail": "🌨", "exceptional": "⚠",
+}
 
 
 def _sparkline(data, window, cols=36):
@@ -184,6 +192,8 @@ class SparklineWidget(Static):
 
 
 class ValueSparklineWidget(Static):
+    DEFAULT_CSS = "ValueSparklineWidget { height: 8; }"
+
     def __init__(self, entity, label, unit="", fmt=".1f", window=60,
                  state_cache=None, history=None, **kwargs):
         super().__init__(**kwargs)
@@ -267,6 +277,86 @@ class ActionWidget(Static):
         return f"[b]{self._label}[/b]{status}"
 
 
+class WeatherWidget(Static):
+    """Current conditions + multi-day forecast from a weather.* entity."""
+
+    def __init__(self, entity, label, unit="°C", state_cache=None, ha=None, **kwargs):
+        super().__init__(**kwargs)
+        self._entity = entity
+        self._label = label
+        self._unit = unit
+        self._state_cache = state_cache
+        self._ha = ha
+        self._forecast = []
+
+    def on_mount(self):
+        self.run_worker(self._refresh_forecast(), exclusive=False)
+        self.set_interval(1800, lambda: self.run_worker(self._refresh_forecast(), exclusive=False))
+
+    async def _refresh_forecast(self):
+        if not self._ha:
+            return
+        try:
+            data = await self._ha.call_service(
+                "weather/get_forecasts",
+                {"entity_id": self._entity, "type": "daily"},
+            )
+            if isinstance(data, dict):
+                self._forecast = data.get(self._entity, {}).get("forecasts", [])
+            elif isinstance(data, list) and data:
+                self._forecast = data[0].get("forecasts", [])
+            if self._forecast:
+                self.refresh()
+        except Exception:
+            pass
+
+    def render(self):
+        state_data = self._state_cache.get(self._entity) if self._state_cache else None
+        if not isinstance(state_data, dict):
+            return f"{self._label}\n[dim]No disponible[/dim]"
+
+        condition = state_data.get("state", "unknown")
+        attrs = state_data.get("attributes", {})
+        temp = attrs.get("temperature", "—")
+        humidity = attrs.get("humidity")
+        wind = attrs.get("wind_speed")
+        wind_unit = attrs.get("wind_speed_unit", "")
+
+        icon = _WX_ICONS.get(condition, "◌")
+        condition_text = condition.replace("-", " ").title()
+
+        lines = [
+            f"{icon}  [bold]{self._label}[/bold]",
+            f"[bold]{temp}{self._unit}[/bold]  [dim]{condition_text}[/dim]",
+        ]
+
+        extras = []
+        if humidity is not None:
+            extras.append(f"💧 {humidity}%")
+        if wind is not None:
+            extras.append(f"💨 {wind}{' ' + wind_unit if wind_unit else ''}")
+        if extras:
+            lines.append("  ".join(extras))
+
+        forecast = self._forecast or attrs.get("forecast", [])
+        if forecast:
+            lines.append("[dim]─────────────────[/dim]")
+            for f in forecast[:4]:
+                dt = f.get("datetime", "")
+                high = f.get("temperature", "—")
+                low = f.get("templow", "")
+                cond = f.get("condition", "")
+                ficon = _WX_ICONS.get(cond, "")
+                try:
+                    day = datetime.datetime.fromisoformat(dt).strftime("%a")
+                except Exception:
+                    day = dt[:3] if dt else "—"
+                temp_str = f"{high}°" + (f"/{low}°" if low != "" else "")
+                lines.append(f"[dim]{day}[/dim]  {temp_str}  {ficon}")
+
+        return "\n".join(lines)
+
+
 class SpotifyWidget(Widget):
     """Media player / Spotify control widget."""
 
@@ -347,14 +437,17 @@ class HADashboard(App):
     .grid-2 { grid-size: 2; }
     .grid-3 { grid-size: 3; }
     .grid-4 { grid-size: 4; }
+    .grid-5 { grid-size: 5; }
     .rows { grid-size: 1; }
-    Grid { grid-gutter: 1; padding: 1 1 0 1; }
+    Grid { height: auto; grid-gutter: 1; padding: 0 1 0 1; }
     Static { border: round; padding: 1; }
     ValueSparklineWidget { height: 8; }
     ToggleWidget { height: 7; text-align: center; }
+    ActionWidget { height: 7; text-align: center; }
     HeadingWidget { column-span: 4; border: none; height: 3; background: $background; padding: 0 1; }
-    .section-heading { border: none; height: 3; background: $background; padding: 0 2; }
+    .section-heading { border: none; height: 1; background: $background; padding: 0 2; margin-top: 1; }
     .error { border: round; color: $error; margin: 2 4; height: auto; }
+    WeatherWidget { height: 12; }
     SpotifyWidget { height: 9; padding: 0; border: round; }
     SpotifyWidget #sp-info { border: none; padding: 0 1; height: 1fr; }
     SpotifyWidget #sp-controls { height: 3; }
@@ -402,7 +495,7 @@ class HADashboard(App):
             )
             return
         self.run_worker(self.ha.pump(), exclusive=True)
-        self.set_interval(self.cfg["ui"].get("refresh_ms", 250) / 1000.0, self.refresh)
+        self.set_interval(self.cfg["ui"].get("refresh_ms", 250) / 1000.0, self.screen.refresh)
         await self.build_page()
 
     def _make_widget(self, w):
@@ -443,6 +536,14 @@ class HADashboard(App):
             )
         elif t == "heading":
             return HeadingWidget(w.get("text", ""))
+        elif t == "weather":
+            return WeatherWidget(
+                entity=w["entity"],
+                label=w.get("label", w["entity"]),
+                unit=w.get("unit", "°C"),
+                state_cache=sc,
+                ha=ha,
+            )
         elif t == "spotify":
             return SpotifyWidget(
                 entity=w["entity"],

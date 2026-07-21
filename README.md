@@ -5,7 +5,7 @@ A terminal dashboard for Home Assistant built with [Textual](https://textual.tex
 ## Features
 
 - **Real-time** — WebSocket connection with automatic reconnection on drops
-- **8 widget types** — Values, binaries, sparklines, toggles, actions, headings, and Spotify player
+- **9 widget types** — Values, binaries, sparklines, toggles, actions, headings, Spotify player, and weather
 - **Multi-page with sections** — Each section has its own independent layout
 - **YAML configurable** — Full dashboard defined in a single file
 - **Environment variables** — Secure token via `.env` or system environment variable
@@ -171,6 +171,17 @@ Shows current state and toggles on click.
 ```yaml
 - type: "heading"
   text: "Office"
+```
+
+### `weather` — Current conditions + forecast
+
+Displays temperature, condition, humidity, wind speed, and a 4-day forecast. Fetches forecast via `weather.get_forecasts` (HA ≥ 2023.9) with fallback to the `forecast` attribute.
+
+```yaml
+- type: "weather"
+  entity: "weather.forecast_casa"
+  label: "Santiago"
+  unit: "°C"   # optional, default °C
 ```
 
 ### `spotify` — Spotify / media player control
