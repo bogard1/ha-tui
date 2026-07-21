@@ -179,8 +179,8 @@ Displays temperature, condition, humidity, wind speed, and a 4-day forecast. Fet
 
 ```yaml
 - type: "weather"
-  entity: "weather.forecast_casa"
-  label: "Santiago"
+  entity: "weather.forecast_home"
+  label: "My City"
   unit: "°C"   # optional, default °C
 ```
 
@@ -190,7 +190,7 @@ Displays current track, artist, and a progress bar. Includes ⏮ ▶/⏸ ⏭ cli
 
 ```yaml
 - type: "spotify"
-  entity: "media_player.spotify_rodrigo_gonzalez"
+  entity: "media_player.spotify_username"
   label: "Spotify"
 ```
 
