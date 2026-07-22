@@ -4,3 +4,5 @@ textual
 pyyaml
 python-dotenv
 pytest
+pytest-cov
+pytest-asyncio

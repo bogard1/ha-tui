@@ -1,0 +1,10 @@
+[run]
+source = ha_client, widgets, ha-tui
+omit =
+    tests/*
+    .venv/*
+    debug_*.py
+    test_navigation.py
+
+[report]
+show_missing = true

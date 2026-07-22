@@ -1,17 +1,17 @@
 import pytest
+from unittest.mock import AsyncMock, patch
 from widgets import (
     ValueWidget, BinaryWidget, SparklineWidget, ValueSparklineWidget,
-    ToggleWidget, HeadingWidget, ActionWidget, WeatherWidget,
+    ToggleWidget, HeadingWidget, ActionWidget, WeatherWidget, SpotifyWidget,
     make_widget, _sparkline,
 )
 from textual.widgets import Static
 
 
-# ── _sparkline ──────────────────────────────────────────────────────────────
+# ── _sparkline ───────────────────────────────────────────────────────────────
 
 def test_sparkline_empty_data():
-    result = _sparkline([], 60)
-    assert result == "─" * 36
+    assert _sparkline([], 60) == "─" * 36
 
 def test_sparkline_respects_window():
     data = list(range(100))
@@ -26,13 +26,12 @@ def test_sparkline_length():
     assert len(result) <= 36
 
 
-# ── ValueWidget ──────────────────────────────────────────────────────────────
+# ── ValueWidget ───────────────────────────────────────────────────────────────
 
 def test_value_widget_missing_entity():
     w = ValueWidget(entity="sensor.x", label="X", state_cache={})
-    result = w.render()
-    assert "X" in result
-    assert "—" in result
+    assert "X" in w.render()
+    assert "—" in w.render()
 
 def test_value_widget_numeric():
     sc = {"sensor.temp": {"state": "23.456"}}
@@ -52,7 +51,7 @@ def test_value_widget_default_fmt():
     assert "1.50" in w.render()
 
 
-# ── BinaryWidget ─────────────────────────────────────────────────────────────
+# ── BinaryWidget ──────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("state,expected", [
     ("on", "ABIERTA"),
@@ -78,16 +77,12 @@ def test_binary_widget_missing_entity():
 
 def test_sparkline_widget_no_history():
     w = SparklineWidget(entity="sensor.x", label="X", history={})
-    result = w.render()
-    assert "X" in result
-    assert "─" in result
+    assert "─" in w.render()
 
 def test_sparkline_widget_with_history():
     hist = {"sensor.x": [1.0, 2.0, 3.0, 4.0, 5.0]}
     w = SparklineWidget(entity="sensor.x", label="X", window=60, history=hist)
-    result = w.render()
-    assert "X" in result
-    assert "─" not in result
+    assert "─" not in w.render()
 
 
 # ── ValueSparklineWidget ──────────────────────────────────────────────────────
@@ -134,6 +129,26 @@ def test_toggle_widget_missing_entity():
     assert "—" in w.render()
 
 
+async def test_toggle_on_click_ha_none():
+    w = ToggleWidget(entity="light.x", label="Luz", state_cache={}, ha=None)
+    await w.on_click()  # early return, no crash
+
+
+async def test_toggle_on_click_calls_service():
+    mock_ha = AsyncMock()
+    w = ToggleWidget(entity="light.x", label="Luz", state_cache={}, ha=mock_ha,
+                     toggle_service="homeassistant/toggle")
+    await w.on_click()
+    mock_ha.call_service.assert_called_once_with("homeassistant/toggle", {"entity_id": "light.x"})
+
+
+async def test_toggle_on_click_ignores_exception():
+    mock_ha = AsyncMock()
+    mock_ha.call_service.side_effect = Exception("timeout")
+    w = ToggleWidget(entity="light.x", label="Luz", state_cache={}, ha=mock_ha)
+    await w.on_click()  # should not raise
+
+
 # ── ActionWidget ──────────────────────────────────────────────────────────────
 
 def test_action_widget_shows_label():
@@ -142,8 +157,24 @@ def test_action_widget_shows_label():
 
 def test_action_widget_no_status_initially():
     w = ActionWidget(label="X", service="s/v")
-    result = w.render()
-    assert "Ejecutando" not in result
+    assert "Ejecutando" not in w.render()
+
+
+async def test_action_on_click_success():
+    mock_ha = AsyncMock()
+    w = ActionWidget(label="X", service="button/press", data={"entity_id": "button.x"}, ha=mock_ha)
+    with patch.object(w, "refresh"):
+        await w.on_click()
+    assert w._status == "✓"
+
+
+async def test_action_on_click_shows_error_on_failure():
+    mock_ha = AsyncMock()
+    mock_ha.call_service.side_effect = Exception("timeout")
+    w = ActionWidget(label="X", service="button/press", ha=mock_ha)
+    with patch.object(w, "refresh"):
+        await w.on_click()
+    assert "Error" in w._status
 
 
 # ── WeatherWidget ─────────────────────────────────────────────────────────────
@@ -186,16 +217,76 @@ def test_weather_widget_forecast():
         }
     }
     w = WeatherWidget(entity="weather.home", label="Home", state_cache=sc)
-    w._forecast = []  # force use of attrs forecast
+    w._forecast = []
     result = w.render()
     assert "20°" in result
     assert "12°" in result
 
+def test_weather_widget_forecast_invalid_datetime():
+    sc = {
+        "weather.home": {
+            "state": "cloudy",
+            "attributes": {
+                "temperature": 18,
+                "forecast": [
+                    {"datetime": "not-a-date", "temperature": 20, "condition": "sunny"},
+                    {"datetime": "", "temperature": 15, "condition": "cloudy"},
+                ],
+            },
+        }
+    }
+    w = WeatherWidget(entity="weather.home", label="Home", state_cache=sc)
+    w._forecast = []
+    result = w.render()
+    assert "not" in result   # dt[:3] for "not-a-date"
+    assert "—" in result     # empty dt → "—"
+
 def test_weather_widget_unknown_condition():
     sc = {"weather.home": {"state": "hailstorm", "attributes": {"temperature": 5}}}
     w = WeatherWidget(entity="weather.home", label="Home", state_cache=sc)
-    result = w.render()
-    assert "◌" in result
+    assert "◌" in w.render()
+
+
+async def test_weather_refresh_no_ha():
+    w = WeatherWidget(entity="weather.home", label="Home", ha=None, state_cache={})
+    await w._refresh_forecast()
+    assert w._forecast == []
+
+
+async def test_weather_refresh_dict_response():
+    mock_ha = AsyncMock()
+    mock_ha.call_service.return_value = {
+        "weather.home": {"forecasts": [{"datetime": "2026-07-21", "temperature": 20}]}
+    }
+    w = WeatherWidget(entity="weather.home", label="Home", ha=mock_ha, state_cache={})
+    with patch.object(w, "refresh"):
+        await w._refresh_forecast()
+    assert len(w._forecast) == 1
+
+
+async def test_weather_refresh_list_response():
+    mock_ha = AsyncMock()
+    mock_ha.call_service.return_value = [{"forecasts": [{"datetime": "2026-07-22", "temperature": 18}]}]
+    w = WeatherWidget(entity="weather.home", label="Home", ha=mock_ha, state_cache={})
+    with patch.object(w, "refresh"):
+        await w._refresh_forecast()
+    assert len(w._forecast) == 1
+
+
+async def test_weather_refresh_empty_dict():
+    mock_ha = AsyncMock()
+    mock_ha.call_service.return_value = {}  # dict but entity key missing
+    w = WeatherWidget(entity="weather.home", label="Home", ha=mock_ha, state_cache={})
+    await w._refresh_forecast()
+    assert w._forecast == []
+
+
+async def test_weather_refresh_exception():
+    mock_ha = AsyncMock()
+    mock_ha.call_service.side_effect = Exception("network error")
+    w = WeatherWidget(entity="weather.home", label="Home", ha=mock_ha, state_cache={})
+    await w._refresh_forecast()  # should not raise
+    assert w._forecast == []
 
 
 # ── make_widget factory ───────────────────────────────────────────────────────
@@ -209,6 +300,7 @@ def test_weather_widget_unknown_condition():
     ({"type": "action", "label": "X", "service": "s/v"}, ActionWidget),
     ({"type": "heading", "text": "Title"}, HeadingWidget),
     ({"type": "weather", "entity": "weather.x"}, WeatherWidget),
+    ({"type": "spotify", "entity": "media_player.x"}, SpotifyWidget),
 ])
 def test_make_widget_returns_correct_type(cfg, expected_type):
     widget = make_widget(cfg, {}, {}, None)

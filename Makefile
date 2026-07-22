@@ -19,7 +19,7 @@ env:
 	@if [ ! -f .env ]; then cp .env.example .env && echo ".env created — edit it and set HA_TOKEN"; else echo ".env already exists"; fi
 
 test: $(VENV_PYTHON)
-	$(VENV_PYTHON) -m pytest tests/ -v
+	$(VENV_PYTHON) -m pytest tests/ -v --cov=. --cov-report=term-missing --cov-config=.coveragerc
 
 lint: $(VENV_PYTHON)
 	$(VENV_PYTHON) -m py_compile ha-tui.py ha_client.py widgets.py && echo "Syntax OK"
