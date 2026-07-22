@@ -3,3 +3,4 @@ websockets
 textual
 pyyaml
 python-dotenv
+pytest

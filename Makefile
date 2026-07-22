@@ -19,10 +19,10 @@ env:
 	@if [ ! -f .env ]; then cp .env.example .env && echo ".env created — edit it and set HA_TOKEN"; else echo ".env already exists"; fi
 
 test: $(VENV_PYTHON)
-	$(VENV_PYTHON) -m pytest test_navigation.py -v
+	$(VENV_PYTHON) -m pytest tests/ -v
 
 lint: $(VENV_PYTHON)
-	$(VENV_PYTHON) -m py_compile ha-tui.py && echo "Syntax OK"
+	$(VENV_PYTHON) -m py_compile ha-tui.py ha_client.py widgets.py && echo "Syntax OK"
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; \

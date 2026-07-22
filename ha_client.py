@@ -18,7 +18,7 @@ class HAClient:
 
     def _ssl_ctx(self):
         if not self.verify_ssl:
-            ctx = ssl.SSLContext()
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             return ctx
