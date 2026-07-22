@@ -72,6 +72,7 @@ async def test_connect_ws_success():
 
     assert client._ws is ws
     assert client.session is mock_cls.return_value
+    assert client.connected is True
     assert ws.send.call_count == 2  # auth + subscribe
 
 
@@ -250,3 +251,27 @@ async def test_pump_ignores_null_new_state():
     await _run_pump_once(client)
 
     assert client.state_cache == {}
+
+
+async def test_pump_calls_on_state_change_callback():
+    client = HAClient("http://test.local", "token")
+    calls = []
+    client.on_state_change = lambda: calls.append(1)
+    client._ws = _FakeWS([_state_changed_msg("light.kitchen", "on")])
+    await _run_pump_once(client)
+
+    assert len(calls) == 1
+
+
+async def test_pump_on_state_change_not_called_for_null_state():
+    client = HAClient("http://test.local", "token")
+    calls = []
+    client.on_state_change = lambda: calls.append(1)
+    msg = json.dumps({
+        "type": "event",
+        "event": {"event_type": "state_changed", "data": {"new_state": None}},
+    })
+    client._ws = _FakeWS([msg])
+    await _run_pump_once(client)
+
+    assert len(calls) == 0

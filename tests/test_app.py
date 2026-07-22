@@ -36,6 +36,7 @@ def _mock_ha():
     ha.initial_states = AsyncMock()
     ha.pump = AsyncMock()
     ha.close = AsyncMock()
+    ha.connected = True
     return ha
 
 

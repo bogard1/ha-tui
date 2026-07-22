@@ -1,7 +1,9 @@
-import os, sys, asyncio
+import os, sys, asyncio, logging
+from typing import Any
 import yaml
 from dotenv import load_dotenv
 from textual.app import App
+from textual.widget import Widget
 from textual.widgets import Static, Header, Footer
 from textual.containers import Grid, VerticalScroll
 
@@ -10,8 +12,16 @@ from widgets import make_widget
 
 load_dotenv()
 
+logging.basicConfig(
+    filename="ha-tui.log",
+    level=logging.WARNING,
+    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
-def load_config(path="dashboard.yml"):
+
+def load_config(path: str = "dashboard.yml") -> dict[str, Any]:
     with open(path, "r") as f:
         raw = os.path.expandvars(f.read())
     return yaml.safe_load(raw)
@@ -34,6 +44,7 @@ class HADashboard(App):
     ValueSparklineWidget { height: 8; }
     ToggleWidget { height: 7; text-align: center; }
     ActionWidget { height: 7; text-align: center; }
+    ClimateWidget { height: 7; }
     HeadingWidget { column-span: 4; border: none; height: 3; background: $background; padding: 0 1; }
     .section-heading { border: none; height: 1; background: $background; padding: 0 2; margin-top: 1; }
     .error { border: round; color: $error; margin: 2 4; height: auto; }
@@ -52,7 +63,7 @@ class HADashboard(App):
         ("q", "quit", "Salir"),
     ]
 
-    def __init__(self, cfg, config_path="dashboard.yml"):
+    def __init__(self, cfg: dict[str, Any], config_path: str = "dashboard.yml") -> None:
         super().__init__()
         self.cfg = cfg
         self.config_path = config_path
@@ -62,6 +73,10 @@ class HADashboard(App):
             token=cfg["ha"]["token"],
             verify_ssl=cfg["ha"].get("verify_ssl", True),
         )
+        try:
+            self._config_mtime = os.path.getmtime(config_path)
+        except OSError:
+            self._config_mtime = 0.0
         kb = cfg.get("keybinds", {})
         if kb:
             self.BINDINGS = [
@@ -71,7 +86,7 @@ class HADashboard(App):
                 (kb.get("quit", "q"), "quit", "Salir"),
             ]
 
-    async def on_mount(self):
+    async def on_mount(self) -> None:
         self.page_container = VerticalScroll(id="page")
         await self.mount(Header(show_clock=True))
         await self.mount(Footer())
@@ -80,18 +95,36 @@ class HADashboard(App):
             await self.ha.connect_ws()
             await self.ha.initial_states()
         except Exception as e:
+            logger.error("Failed to connect to Home Assistant: %s", e)
             await self.page_container.mount(
                 Static(f"[bold]Error conectando a Home Assistant[/bold]\n{e}", classes="error")
             )
             return
         self.run_worker(self.ha.pump(), exclusive=True)
-        self.set_interval(self.cfg["ui"].get("refresh_ms", 250) / 1000.0, self.screen.refresh)
+        self.ha.on_state_change = self._refresh_page_widgets
+        self.set_interval(self.cfg["ui"].get("refresh_ms", 250) / 1000.0, self._update_ui)
         await self.build_page()
 
-    def _make_widget(self, w):
+    def _refresh_page_widgets(self) -> None:
+        for w in self.page_container.query("*"):
+            w.refresh()
+
+    def _update_ui(self) -> None:
+        self._refresh_page_widgets()
+        self.sub_title = "● Conectado" if self.ha.connected else "○ Reconectando…"
+        try:
+            mtime = os.path.getmtime(self.config_path)
+            if mtime != self._config_mtime:
+                self._config_mtime = mtime
+                logger.info("Config changed, reloading…")
+                self.action_reload_cfg()
+        except OSError:
+            pass
+
+    def _make_widget(self, w: dict[str, Any]) -> Widget:
         return make_widget(w, self.ha.state_cache, self.ha.history, self.ha)
 
-    async def build_page(self):
+    async def build_page(self) -> None:
         await self.page_container.remove_children()
         page = self.cfg["pages"][self.page_idx]
 
@@ -113,22 +146,26 @@ class HADashboard(App):
 
         self.title = f"HA TUI · {page.get('title', page.get('id'))}  ({self.page_idx + 1}/{len(self.cfg['pages'])})"
 
-    def action_next_page(self):
+    def action_next_page(self) -> None:
         self.page_idx = (self.page_idx + 1) % len(self.cfg["pages"])
         self.run_worker(self.build_page())
 
-    def action_prev_page(self):
+    def action_prev_page(self) -> None:
         self.page_idx = (self.page_idx - 1) % len(self.cfg["pages"])
         self.run_worker(self.build_page())
 
-    def action_reload_cfg(self):
-        self.cfg = load_config(self.config_path)
+    def action_reload_cfg(self) -> None:
+        try:
+            self.cfg = load_config(self.config_path)
+        except Exception as e:
+            logger.error("Failed to reload config: %s", e)
+            return
         self.run_worker(self.build_page())
 
-    def action_quit(self):
+    def action_quit(self) -> None:
         self.exit()
 
-    async def on_unmount(self):
+    async def on_unmount(self) -> None:
         await self.ha.close()
 
 

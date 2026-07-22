@@ -1,12 +1,13 @@
 import datetime
+from typing import Any
 from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Static, Button
 from textual.containers import Horizontal
 
-_ON_STATES = {"on", "open", "detected", "home", "true"}
+_ON_STATES: set[str] = {"on", "open", "detected", "home", "true"}
 _SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
-_WX_ICONS = {
+_WX_ICONS: dict[str, str] = {
     "sunny": "☀", "clear-night": "🌙", "cloudy": "☁",
     "partlycloudy": "⛅", "rainy": "🌧", "pouring": "🌧",
     "snowy": "❄", "snowy-rainy": "🌨", "fog": "🌫",
@@ -14,9 +15,13 @@ _WX_ICONS = {
     "lightning": "⚡", "lightning-rainy": "⛈",
     "hail": "🌨", "exceptional": "⚠",
 }
+_HVAC_ICONS: dict[str, str] = {
+    "heat": "🔥", "cool": "❄", "heat_cool": "♻",
+    "auto": "♻", "dry": "💧", "fan_only": "💨", "off": "○",
+}
 
 
-def _sparkline(data, window, cols=36):
+def _sparkline(data: list[float], window: int, cols: int = 36) -> str:
     data = data[-window:]
     if not data:
         return "─" * cols
@@ -27,7 +32,8 @@ def _sparkline(data, window, cols=36):
 
 
 class ValueWidget(Static):
-    def __init__(self, entity, label, unit="", fmt=".2f", state_cache=None, **kwargs):
+    def __init__(self, entity: str, label: str, unit: str = "", fmt: str = ".2f",
+                 state_cache: dict[str, Any] | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.entity = entity
         self.label = label
@@ -35,11 +41,11 @@ class ValueWidget(Static):
         self.fmt = fmt
         self.state_cache = state_cache
 
-    def render(self):
+    def render(self) -> str:
         st = self.state_cache.get(self.entity) if self.state_cache else None
         if not st:
             return f"{self.label}\n—"
-        val = st.get("state", "")
+        val: Any = st.get("state", "")
         try:
             val = format(float(val), self.fmt)
         except (ValueError, TypeError):
@@ -48,7 +54,8 @@ class ValueWidget(Static):
 
 
 class BinaryWidget(Static):
-    def __init__(self, entity, label, on_text="ON", off_text="off", state_cache=None, **kwargs):
+    def __init__(self, entity: str, label: str, on_text: str = "ON", off_text: str = "off",
+                 state_cache: dict[str, Any] | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.entity = entity
         self.label = label
@@ -56,7 +63,7 @@ class BinaryWidget(Static):
         self.off_text = off_text
         self.state_cache = state_cache
 
-    def render(self):
+    def render(self) -> str:
         st = self.state_cache.get(self.entity) if self.state_cache else None
         if not st:
             return f"{self.label}\n—"
@@ -65,14 +72,15 @@ class BinaryWidget(Static):
 
 
 class SparklineWidget(Static):
-    def __init__(self, entity, label, window=60, history=None, **kwargs):
+    def __init__(self, entity: str, label: str, window: int = 60,
+                 history: dict[str, list[float]] | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.entity = entity
         self.label = label
         self.window = window
         self.history = history
 
-    def render(self):
+    def render(self) -> str:
         data = self.history.get(self.entity, []) if self.history else []
         return f"{self.label}\n{_sparkline(data, self.window)}"
 
@@ -80,8 +88,9 @@ class SparklineWidget(Static):
 class ValueSparklineWidget(Static):
     DEFAULT_CSS = "ValueSparklineWidget { height: 8; }"
 
-    def __init__(self, entity, label, unit="", fmt=".1f", window=60,
-                 state_cache=None, history=None, **kwargs):
+    def __init__(self, entity: str, label: str, unit: str = "", fmt: str = ".1f",
+                 window: int = 60, state_cache: dict[str, Any] | None = None,
+                 history: dict[str, list[float]] | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.entity = entity
         self.label = label
@@ -91,7 +100,7 @@ class ValueSparklineWidget(Static):
         self.state_cache = state_cache
         self.history = history
 
-    def render(self):
+    def render(self) -> str:
         st = self.state_cache.get(self.entity) if self.state_cache else None
         val = "—"
         if st:
@@ -104,8 +113,9 @@ class ValueSparklineWidget(Static):
 
 
 class ToggleWidget(Static):
-    def __init__(self, entity, label, on_text="ON", off_text="off",
-                 toggle_service="homeassistant/toggle", state_cache=None, ha=None, **kwargs):
+    def __init__(self, entity: str, label: str, on_text: str = "ON", off_text: str = "off",
+                 toggle_service: str = "homeassistant/toggle",
+                 state_cache: dict[str, Any] | None = None, ha: Any = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.entity = entity
         self.label = label
@@ -115,7 +125,7 @@ class ToggleWidget(Static):
         self.state_cache = state_cache
         self.ha = ha
 
-    async def on_click(self):
+    async def on_click(self) -> None:
         if not self.ha or not self.entity:
             return
         try:
@@ -123,7 +133,7 @@ class ToggleWidget(Static):
         except Exception:
             pass
 
-    def render(self):
+    def render(self) -> str:
         st = self.state_cache.get(self.entity) if self.state_cache else None
         if not st:
             return f"[dim]{self.label}[/dim]\n—"
@@ -135,12 +145,13 @@ class ToggleWidget(Static):
 
 
 class HeadingWidget(Static):
-    def __init__(self, text, **kwargs):
+    def __init__(self, text: str, **kwargs: Any) -> None:
         super().__init__(f"[bold]{text}[/bold]", **kwargs)
 
 
 class ActionWidget(Static):
-    def __init__(self, label, service, data=None, ha=None, **kwargs):
+    def __init__(self, label: str, service: str, data: dict[str, Any] | None = None,
+                 ha: Any = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._label = label
         self.service = service
@@ -148,7 +159,7 @@ class ActionWidget(Static):
         self.ha = ha
         self._status = ""
 
-    async def on_click(self):
+    async def on_click(self) -> None:
         self._status = "Ejecutando…"
         self.refresh()
         try:
@@ -158,26 +169,55 @@ class ActionWidget(Static):
             self._status = f"Error: {e}"
         self.refresh()
 
-    def render(self):
+    def render(self) -> str:
         status = f"\n[dim]{self._status}[/dim]" if self._status else ""
         return f"[b]{self._label}[/b]{status}"
 
 
+class ClimateWidget(Static):
+    def __init__(self, entity: str, label: str, unit: str = "°C",
+                 state_cache: dict[str, Any] | None = None, ha: Any = None, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.entity = entity
+        self.label = label
+        self.unit = unit
+        self.state_cache = state_cache
+        self.ha = ha
+
+    def render(self) -> str:
+        st = self.state_cache.get(self.entity) if self.state_cache else None
+        if not st:
+            return f"[dim]{self.label}[/dim]\n—"
+        attrs = st.get("attributes", {})
+        mode = st.get("state", "off")
+        current = attrs.get("current_temperature")
+        target = attrs.get("temperature")
+        icon = _HVAC_ICONS.get(mode, "◌")
+        current_str = f"{current}{self.unit}" if current is not None else "—"
+        target_str = f"{target}{self.unit}" if target is not None else "—"
+        return (
+            f"[dim]{self.label}[/dim]\n"
+            f"[bold]{current_str}[/bold]  →  [yellow]{target_str}[/yellow]\n"
+            f"{icon}  [dim]{mode}[/dim]"
+        )
+
+
 class WeatherWidget(Static):
-    def __init__(self, entity, label, unit="°C", state_cache=None, ha=None, **kwargs):
+    def __init__(self, entity: str, label: str, unit: str = "°C",
+                 state_cache: dict[str, Any] | None = None, ha: Any = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._entity = entity
         self._label = label
         self._unit = unit
         self._state_cache = state_cache
         self._ha = ha
-        self._forecast = []
+        self._forecast: list[dict[str, Any]] = []
 
-    def on_mount(self):
+    def on_mount(self) -> None:
         self.run_worker(self._refresh_forecast(), exclusive=False)
         self.set_interval(1800, lambda: self.run_worker(self._refresh_forecast(), exclusive=False))
 
-    async def _refresh_forecast(self):
+    async def _refresh_forecast(self) -> None:
         if not self._ha:
             return
         try:
@@ -194,7 +234,7 @@ class WeatherWidget(Static):
         except Exception:
             pass
 
-    def render(self):
+    def render(self) -> str:
         state_data = self._state_cache.get(self._entity) if self._state_cache else None
         if not isinstance(state_data, dict):
             return f"{self._label}\n[dim]No disponible[/dim]"
@@ -242,7 +282,8 @@ class WeatherWidget(Static):
 
 
 class SpotifyWidget(Widget):
-    def __init__(self, entity: str, label: str, ha, state_cache: dict, history: dict, **kwargs):
+    def __init__(self, entity: str, label: str, ha: Any,
+                 state_cache: dict[str, Any], history: dict[str, list[float]], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._entity = entity
         self._label = label
@@ -308,53 +349,59 @@ class SpotifyWidget(Widget):
             pass
 
 
-def make_widget(w, state_cache, history, ha):
+def make_widget(w: dict[str, Any], state_cache: dict[str, Any],
+                history: dict[str, list[float]], ha: Any) -> Widget:
     t = w["type"]
     sc, hist = state_cache, history
     if t == "value":
         return ValueWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
-            unit=w.get("unit", ""), fmt=w.get("fmt", ".2f"), state_cache=sc
+            unit=w.get("unit", ""), fmt=w.get("fmt", ".2f"), state_cache=sc,
         )
     elif t == "binary":
         return BinaryWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
-            on_text=w.get("on_text", "ON"), off_text=w.get("off_text", "off"), state_cache=sc
+            on_text=w.get("on_text", "ON"), off_text=w.get("off_text", "off"), state_cache=sc,
         )
     elif t == "sparkline":
         return SparklineWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
-            window=int(w.get("window", 60)), history=hist
+            window=int(w.get("window", 60)), history=hist,
         )
     elif t == "value_sparkline":
         return ValueSparklineWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
             unit=w.get("unit", ""), fmt=w.get("fmt", ".1f"),
-            window=int(w.get("window", 60)), state_cache=sc, history=hist
+            window=int(w.get("window", 60)), state_cache=sc, history=hist,
         )
     elif t == "toggle":
         return ToggleWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
             on_text=w.get("on_text", "ON"), off_text=w.get("off_text", "off"),
             toggle_service=w.get("toggle_service", "homeassistant/toggle"),
-            state_cache=sc, ha=ha
+            state_cache=sc, ha=ha,
         )
     elif t == "action":
         return ActionWidget(
             label=w["label"], service=w["service"],
-            data=w.get("data", {}), ha=ha
+            data=w.get("data", {}), ha=ha,
         )
     elif t == "heading":
         return HeadingWidget(w.get("text", ""))
+    elif t == "climate":
+        return ClimateWidget(
+            entity=w["entity"], label=w.get("label", w["entity"]),
+            unit=w.get("unit", "°C"), state_cache=sc, ha=ha,
+        )
     elif t == "weather":
         return WeatherWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
-            unit=w.get("unit", "°C"), state_cache=sc, ha=ha
+            unit=w.get("unit", "°C"), state_cache=sc, ha=ha,
         )
     elif t == "spotify":
         return SpotifyWidget(
             entity=w["entity"], label=w.get("label", w["entity"]),
-            ha=ha, state_cache=sc, history=hist
+            ha=ha, state_cache=sc, history=hist,
         )
     else:
         return Static(f"Widget '{t}' no soportado")

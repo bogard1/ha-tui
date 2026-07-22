@@ -1,9 +1,12 @@
-import json, ssl, asyncio
+import json, ssl, asyncio, logging
+from typing import Any
 import aiohttp, websockets
+
+logger = logging.getLogger(__name__)
 
 
 class HAClient:
-    def __init__(self, url, token, verify_ssl=True):
+    def __init__(self, url: str, token: str, verify_ssl: bool = True) -> None:
         self.base_url = url.rstrip("/")
         if self.base_url.startswith("https://"):
             self.ws_url = "wss://" + self.base_url[8:] + "/api/websocket"
@@ -11,12 +14,14 @@ class HAClient:
             self.ws_url = "ws://" + self.base_url[7:] + "/api/websocket"
         self.token = token
         self.verify_ssl = verify_ssl
-        self.session = None
-        self.state_cache = {}
-        self.history = {}
-        self._ws = None
+        self.session: aiohttp.ClientSession | None = None
+        self.state_cache: dict[str, Any] = {}
+        self.history: dict[str, list[float]] = {}
+        self.connected: bool = False
+        self._ws: Any = None
+        self.on_state_change: Any = None  # callable() → notifies UI on each state update
 
-    def _ssl_ctx(self):
+    def _ssl_ctx(self) -> ssl.SSLContext | None:
         if not self.verify_ssl:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.check_hostname = False
@@ -24,7 +29,7 @@ class HAClient:
             return ctx
         return None
 
-    async def connect_ws(self):
+    async def connect_ws(self) -> None:
         if self.session is None:
             self.session = aiohttp.ClientSession()
         ssl_ctx = self._ssl_ctx() if self.base_url.startswith("https") else None
@@ -37,12 +42,13 @@ class HAClient:
         if msg["type"] != "auth_ok":
             raise RuntimeError(f"Autenticación fallida: {msg.get('message', msg['type'])}")
         await self._ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "state_changed"}))
+        self.connected = True
 
-    async def initial_states(self):
-        async with self.session.get(
+    async def initial_states(self) -> None:
+        async with self.session.get(  # type: ignore[union-attr]
             f"{self.base_url}/api/states",
             headers={"Authorization": f"Bearer {self.token}"},
-            ssl=self._ssl_ctx()
+            ssl=self._ssl_ctx(),
         ) as r:
             r.raise_for_status()
             for st in await r.json():
@@ -53,7 +59,7 @@ class HAClient:
                 except (ValueError, TypeError):
                     pass
 
-    async def pump(self):
+    async def pump(self) -> None:
         backoff = 1
         while True:
             try:
@@ -72,31 +78,34 @@ class HAClient:
                                     self.history[ent] = hist[-600:]
                             except (ValueError, TypeError):
                                 pass
+                            if self.on_state_change:
+                                self.on_state_change()
                 backoff = 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("WebSocket error: %s", e)
+            self.connected = False
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 60)
             try:
                 await self.connect_ws()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Reconnect failed: %s", e)
 
-    async def call_service(self, service: str, payload: dict):
+    async def call_service(self, service: str, payload: dict[str, Any]) -> Any:
         domain, srv = service.split("/")
-        async with self.session.post(
+        async with self.session.post(  # type: ignore[union-attr]
             f"{self.base_url}/api/services/{domain}/{srv}",
             headers={
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
             },
             json=payload,
-            ssl=self._ssl_ctx()
+            ssl=self._ssl_ctx(),
         ) as r:
             r.raise_for_status()
             return await r.json()
 
-    async def close(self):
+    async def close(self) -> None:
         if self._ws:
             await self._ws.close()
         if self.session:

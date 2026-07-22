@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from widgets import (
     ValueWidget, BinaryWidget, SparklineWidget, ValueSparklineWidget,
-    ToggleWidget, HeadingWidget, ActionWidget, WeatherWidget, SpotifyWidget,
+    ToggleWidget, HeadingWidget, ActionWidget, ClimateWidget, WeatherWidget, SpotifyWidget,
     make_widget, _sparkline,
 )
 from textual.widgets import Static
@@ -147,6 +147,48 @@ async def test_toggle_on_click_ignores_exception():
     mock_ha.call_service.side_effect = Exception("timeout")
     w = ToggleWidget(entity="light.x", label="Luz", state_cache={}, ha=mock_ha)
     await w.on_click()  # should not raise
+
+
+# ── ActionWidget ──────────────────────────────────────────────────────────────
+
+# ── ClimateWidget ─────────────────────────────────────────────────────────────
+
+def test_climate_widget_no_state():
+    w = ClimateWidget(entity="climate.salon", label="Salón", state_cache={})
+    assert "Salón" in w.render()
+    assert "—" in w.render()
+
+def test_climate_widget_heating():
+    sc = {
+        "climate.salon": {
+            "state": "heat",
+            "attributes": {"current_temperature": 20.5, "temperature": 22.0},
+        }
+    }
+    w = ClimateWidget(entity="climate.salon", label="Salón", unit="°C", state_cache=sc)
+    result = w.render()
+    assert "20.5°C" in result
+    assert "22.0°C" in result
+    assert "🔥" in result
+    assert "heat" in result
+
+def test_climate_widget_off():
+    sc = {
+        "climate.salon": {
+            "state": "off",
+            "attributes": {"current_temperature": 19.0, "temperature": None},
+        }
+    }
+    w = ClimateWidget(entity="climate.salon", label="Salón", state_cache=sc)
+    result = w.render()
+    assert "19.0°C" in result
+    assert "—" in result      # target is None
+    assert "○" in result
+
+def test_climate_widget_unknown_mode():
+    sc = {"climate.x": {"state": "custom_mode", "attributes": {}}}
+    w = ClimateWidget(entity="climate.x", label="X", state_cache=sc)
+    assert "◌" in w.render()
 
 
 # ── ActionWidget ──────────────────────────────────────────────────────────────
@@ -299,6 +341,7 @@ async def test_weather_refresh_exception():
     ({"type": "toggle", "entity": "light.x"}, ToggleWidget),
     ({"type": "action", "label": "X", "service": "s/v"}, ActionWidget),
     ({"type": "heading", "text": "Title"}, HeadingWidget),
+    ({"type": "climate", "entity": "climate.x"}, ClimateWidget),
     ({"type": "weather", "entity": "weather.x"}, WeatherWidget),
     ({"type": "spotify", "entity": "media_player.x"}, SpotifyWidget),
 ])
