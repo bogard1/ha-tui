@@ -5,7 +5,7 @@ A terminal dashboard for Home Assistant built with [Textual](https://textual.tex
 ## Features
 
 - **Real-time** — WebSocket connection with automatic reconnection on drops
-- **9 widget types** — Values, binaries, sparklines, toggles, actions, headings, Spotify player, and weather
+- **10 widget types** — Values, binaries, sparklines, toggles, actions, headings, climate control, Spotify player, and weather
 - **Multi-page with sections** — Each section has its own independent layout
 - **YAML configurable** — Full dashboard defined in a single file
 - **Environment variables** — Secure token via `.env` or system environment variable
@@ -33,12 +33,14 @@ cp .env.example .env
 
 | Command | Description |
 |---------|-------------|
-| `make run` | Run the dashboard |
+| `make run` | Run the dashboard (local venv) |
 | `make install` | Create virtualenv and install dependencies |
 | `make setup` | `install` + create `.env` if it doesn't exist |
 | `make env` | Copy `.env.example` → `.env` |
 | `make test` | Run tests |
 | `make lint` | Check syntax of `ha-tui.py` |
+| `make docker-build` | Build the Docker image |
+| `make docker-run` | Run the dashboard in Docker |
 | `make clean` | Remove `__pycache__`, `.pyc` files, and `.venv` |
 
 ## Configuration
@@ -173,6 +175,17 @@ Shows current state and toggles on click.
   text: "Office"
 ```
 
+### `climate` — Climate/thermostat control
+
+Displays current temperature, target temperature, HVAC mode, and an icon representing the active mode (🔥 heat, ❄ cool, ♻ auto, 💨 fan, etc.).
+
+```yaml
+- type: "climate"
+  entity: "climate.living_room"
+  label: "Living"
+  unit: "°C"   # optional, default °C
+```
+
 ### `weather` — Current conditions + forecast
 
 Displays temperature, condition, humidity, wind speed, and a 4-day forecast. Fetches forecast via `weather.get_forecasts` (HA ≥ 2023.9) with fallback to the `forecast` attribute.
@@ -249,6 +262,30 @@ keybinds:
   reload_config: "r"
   quit: "q"
 ```
+
+## Docker
+
+No Python or venv required — mount your config files and run:
+
+```bash
+# Build once
+make docker-build
+
+# Run (reads dashboard.yml and .env from the current directory)
+make docker-run
+```
+
+Or manually:
+
+```bash
+docker build -t ha-tui .
+docker run -it --rm \
+  -v $(pwd)/dashboard.yml:/app/dashboard.yml \
+  -v $(pwd)/.env:/app/.env \
+  ha-tui
+```
+
+`dashboard.yml` and `.env` are mounted at runtime so you can edit them without rebuilding the image.
 
 ## Troubleshooting
 
